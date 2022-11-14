@@ -1,0 +1,66 @@
+Container {
+    margin: 1 0 0 0;
+}
+
+Horizontal {
+    height: 5;
+}
+
+Input {
+    width: 25;
+}
+
+Static {
+    width: 15;
+    height: 3;
+    content-align: right middle;
+}
+
+/*#span_client_id, #button_group_2 {
+    width: 1fr;
+}*/
+
+#span_client_name, #span_alias {
+    width: 1fr;
+}
+
+#field_client_name {
+    width: 45;
+}
+
+#label_alias {
+    width: 10;
+}
+
+#field_alias {
+    width: 45;
+}
+
+#span_date, #span_tests, #span_quantity {
+    width: 1fr;
+}
+
+Button {
+    text-align: center;
+}
+
+#button_group_1 {
+    width: 1fr;
+    align: right top;
+}
+
+#button_load, #button_save {
+    align-vertical: top;
+}
+
+#button_print, #button_reset, #button_load, #button_save {
+    margin: 0 1 0 1;
+}
+
+/* .no_error {
+    display: none;
+}
+
+.error {
+    display: block;
+} */

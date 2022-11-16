@@ -3,6 +3,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.reactive import reactive
 from textual.containers import Container, Vertical, Horizontal
+from textual import events
 from textual.widgets import Header, Footer, Static, Input, Button
 from datetime import date
 from zebra_labels import labels, zebra_printer
@@ -11,7 +12,8 @@ class DemoLabels(App):
     """A textual app for printing demographic labels."""
 
     CSS_PATH = "demo_printer.css"
-    BINDINGS = [("ctrl+q", "quit", "Quit Application")]
+    BINDINGS = [("ctrl+d", "toggle_dark", "Dark Mode"),
+                ("ctrl+q", "quit", "Quit Application")]
 
     printer = reactive("")
     clientid = reactive("")
@@ -21,7 +23,7 @@ class DemoLabels(App):
     date = reactive("")
     quantity = reactive(0)
 
-    def clear_fields(self, additional_skip=None):
+    def action_clear_fields(self, additional_skip=None):
         skip = ["field_label_printer", "field_date"]
         if additional_skip is not None:
             skip = skip + additional_skip
@@ -30,10 +32,83 @@ class DemoLabels(App):
                 pass
             else:
                 widget.value = ""
+        self.set_focus(self.query_one("#field_client_id"))
+    
+    def action_load_client(self):
+        """Load specified client into App"""
+        with open(Path.cwd() / "clients.json", "r") as read_clients:
+            clients = json.load(read_clients)
+        if self.clientid in clients:
+            self.query_one("#field_client_name").value = clients[self.clientid]["name"]
+            self.query_one("#field_alias").value = clients[self.clientid]["alias"]
+            self.query_one("#field_tests").value = clients[self.clientid]["order codes"]
+            self.set_focus(self.query_one("#field_date"))
+        else:
+            self.action_clear_fields(additional_skip=["field_client_id"])
+            self.set_focus(self.query_one("#field_client_name"))
+
+    def action_print_label(self) -> None:
+        """Print labels for the given criteria."""
+        # print labels if Input fields are valid and complete
+        with open(Path.cwd() / "printers.json", "r") as read_printers:
+            printers = json.load(read_printers)
+        error_message = self.query_one("#invalid_data")
+        if (self.printer in printers and 
+            len(self.clientid) > 0 and
+            len(self.name) > 3 and
+            len(self.tests) > 2 and
+            len(self.date) > 5 and
+            len(self.quantity) > 0 and self.quantity.isnumeric()):
+            
+            error_message.styles.visibility = 'hidden'
+            label = labels.demo_label(self.clientid, self.name, self.tests, self.date)
+            zebra_printer.print_label(label, printers[self.printer], quantity=int(self.quantity))
+            self.action_clear_fields()
+        else:
+            error_message.styles.visibility = 'visible'
+
+    def action_save_client(self) -> None:
+        with open(Path.cwd() / "clients.json", "r") as read_clients:
+            clients = json.load(read_clients)
+        if (len(self.clientid) > 0 and
+            len(self.name) > 3 and
+            len(self.tests) > 2):
+            
+            if self.clientid not in clients:
+                clients[self.clientid] = {}
+            clients[self.clientid]["name"] = self.name
+            clients[self.clientid]["order codes"] = self.tests
+            clients[self.clientid]["alias"] = self.alias
+            with open(Path.cwd() / "clients.json", 'w') as write_clients:
+                json.dump(clients, write_clients, indent=4)
 
     def on_mount(self):
         """Set default start values on App start."""
+        self.title = "Demographics Label Printer"
         self.query_one('#invalid_data').styles.visibility = 'hidden'
+        self.set_focus(self.query_one("#field_label_printer"))
+
+    def on_key(self, event: events.Enter) -> None:
+        """Event handler for key presses."""
+
+        # When pressing the enter key in an Input field, intelligently move to the relevant next field or button.
+        if event.key == "enter":
+            if self.focused.id == "field_label_printer":
+                self.set_focus(self.query_one("#field_client_id"))
+            elif self.focused.id == "field_client_id":
+                self.action_load_client()
+            elif self.focused.id == "field_client_name":
+                self.set_focus(self.query_one("#field_alias"))
+            elif self.focused.id == "field_alias":
+                self.set_focus(self.query_one("#field_tests"))
+            elif self.focused.id == "field_tests":
+                self.set_focus(self.query_one("#field_date"))
+            elif self.focused.id == "field_date":
+                self.set_focus(self.query_one("#field_quantity"))
+            elif self.focused.id == "field_quantity":
+                self.action_print_label()
+            elif self.focused.id == "button_reset":
+                self.action_clear_fields()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Update reative variables with respective field value, whenever any input value changes."""
@@ -49,47 +124,14 @@ class DemoLabels(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Event handler for button presses."""
         if event.button.id == "button_reset":
-            self.clear_fields()
+            self.action_clear_fields()
         elif event.button.id == "button_load":
-            with open(Path.cwd() / "clients.json", "r") as read_clients:
-                clients = json.load(read_clients)
-            if self.clientid in clients:
-                self.query_one("#field_client_name").value = clients[self.clientid]["name"]
-                self.query_one("#field_alias").value = clients[self.clientid]["alias"]
-                self.query_one("#field_tests").value = clients[self.clientid]["order codes"]
-            else:
-                self.clear_fields(additional_skip=["field_client_id"])
+            self.action_load_client()
         elif event.button.id == "button_save":
-            with open(Path.cwd() / "clients.json", "r") as read_clients:
-                clients = json.load(read_clients)
-            if (len(self.clientid) > 0 and
-                len(self.name) > 3 and
-                len(self.tests) > 2):
-                
-                if self.clientid not in clients:
-                    clients[self.clientid] = {}
-                clients[self.clientid]["name"] = self.name
-                clients[self.clientid]["order codes"] = self.tests
-                clients[self.clientid]["alias"] = self.alias
-                with open(Path.cwd() / "clients.json", 'w') as write_clients:
-                    json.dump(clients, write_clients, indent=4)
+            self.action_save_client()
         else:
             # print labels if Input fields are valid and complete
-            with open(Path.cwd() / "printers.json", "r") as read_printers:
-                printers = json.load(read_printers)
-            error_message = self.query_one("#invalid_data")
-            if (self.printer in printers and 
-                len(self.clientid) > 0 and
-                len(self.name) > 3 and
-                len(self.tests) > 2 and
-                len(self.date) > 5 and
-                len(self.quantity) > 0 and self.quantity.isnumeric()):
-                
-                error_message.styles.visibility = 'hidden'
-                label = labels.demo_label(self.clientid, self.name, self.tests, self.date)
-                zebra_printer.print_label(label, printers[self.printer], quantity=int(self.quantity))
-            else:
-                error_message.styles.visibility = 'visible'
+            self.action_print_label()
 
     def compose(self) -> ComposeResult:
         """Create child widgets for app."""

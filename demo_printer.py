@@ -1,17 +1,38 @@
 import json
 from pathlib import Path
+from types import CellType
 from textual.app import App, ComposeResult
 from textual.reactive import reactive
 from textual.containers import Container, Vertical, Horizontal
 from textual import events
-from textual.widgets import Header, Footer, Static, Input, Button
+from textual.screen import Screen
+from textual.widgets import Header, Footer, Static, Input, Button, DataTable
 from datetime import date
 from zebra_labels import labels, zebra_printer
+
+class ClientList(Screen):
+    """A screen to display the current list of clients."""
+    BINDINGS = [("escape", "app.pop_screen", "Close Client List")]
+
+    def compose(self) -> ComposeResult:
+        yield Footer()
+        yield DataTable()
+        
+
+    def on_mount(self) -> None:
+        with open(Path.cwd() / "clients.json", "r") as read_clients:
+            clients_json = json.load(read_clients)
+        table = self.query_one(DataTable)
+        for column in ["Client ID", "Physician Name", "Alias", "Order Codes"]:
+            table.add_column(column)
+        for client, data in clients_json.items():
+            table.add_row(client, data.get('name'), data.get('alias'), data.get('order codes'))          
 
 class DemoLabels(App):
     """A textual app for printing demographic labels."""
 
     CSS_PATH = "demo_printer.css"
+    SCREENS = {"client_list": ClientList()}
     BINDINGS = [("ctrl+d", "toggle_dark", "Dark Mode"),
                 ("ctrl+q", "quit", "Quit Application")]
 
@@ -28,9 +49,7 @@ class DemoLabels(App):
         if additional_skip is not None:
             skip = skip + additional_skip
         for widget in self.query("Input"):
-            if widget.id in skip:
-                pass
-            else:
+            if widget.id not in skip:
                 widget.value = ""
         self.set_focus(self.query_one("#field_client_id"))
     
@@ -88,27 +107,16 @@ class DemoLabels(App):
         self.query_one('#invalid_data').styles.visibility = 'hidden'
         self.set_focus(self.query_one("#field_label_printer"))
 
-    def on_key(self, event: events.Enter) -> None:
-        """Event handler for key presses."""
-
-        # When pressing the enter key in an Input field, intelligently move to the relevant next field or button.
-        if event.key == "enter":
-            if self.focused.id == "field_label_printer":
-                self.set_focus(self.query_one("#field_client_id"))
-            elif self.focused.id == "field_client_id":
-                self.action_load_client()
-            elif self.focused.id == "field_client_name":
-                self.set_focus(self.query_one("#field_alias"))
-            elif self.focused.id == "field_alias":
-                self.set_focus(self.query_one("#field_tests"))
-            elif self.focused.id == "field_tests":
-                self.set_focus(self.query_one("#field_date"))
-            elif self.focused.id == "field_date":
-                self.set_focus(self.query_one("#field_quantity"))
-            elif self.focused.id == "field_quantity":
-                self.action_print_label()
-            elif self.focused.id == "button_reset":
-                self.action_clear_fields()
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Event handler for Input field submissions."""
+        input_control = {"next": ["field_label_printer", "field_client_name", "field_alias", "field_tests", "field_date"],
+                    "field_client_id": self.action_load_client,
+                    "field_quantity": self.action_print_label}
+                    
+        if self.focused.id in input_control.get("next"):
+            self.query_one("#_default").focus_next()
+        else:
+            input_control.get(self.focused.id)()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Update reative variables with respective field value, whenever any input value changes."""
@@ -129,6 +137,8 @@ class DemoLabels(App):
             self.action_load_client()
         elif event.button.id == "button_save":
             self.action_save_client()
+        elif event.button.id == "button_view_clients":
+            self.push_screen(ClientList())
         else:
             # print labels if Input fields are valid and complete
             self.action_print_label()
@@ -149,6 +159,7 @@ class DemoLabels(App):
                     Input(placeholder="<Client ID>", id="field_client_id"),
                     Button("Load Client", id="button_load"),
                     Button("Save/Update", id="button_save"),
+                    Button("View Clients", id="button_view_clients"),
                     id="span_client_id"
                 ),
                 id="row2"
